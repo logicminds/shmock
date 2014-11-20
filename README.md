@@ -29,6 +29,10 @@ the real system with canned mocked responses.
 * The goal of the Smockfile is to easily sync changes from upstream fixtures.  The smock binary will download new changes
 * Returned data of rendered fixture should fail gracefully and return smock fixture failed to render
 
+* Stub system calls using bash_prompt and setting path to include shims
+  The PROMPT_COMMAND will execute the main binary that then creates a shim specifically for the system call.
+  We can then changes the PROMPT to show its a mocked response.
+
 
 
 ### Similar tools
