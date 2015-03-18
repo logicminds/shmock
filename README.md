@@ -6,6 +6,9 @@ System testing can be difficult and very time consuming.  It would be great if
 we could mock system level commands so that we can create better code that utilizes 
 the real system with canned mocked responses.
 
+As a developer I am tired of mocking system calls and wish there was a way for my code to get a real result without
+having to mock objects and rely on fixtures to supply the data.  I want a real response and real values.
+
 ### Goals
 
 * mock any binary on any system for through system testing
