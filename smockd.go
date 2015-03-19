@@ -34,7 +34,7 @@ func generateCommandHash(cmd_stdin string) string {
   return fmt.Sprintf("%x", sha1.Sum(data))
 }
 
-func renderJson(file string, context CommandEnv) []byte {
+func renderTemplate(file string, context CommandEnv) []byte {
   // Check for template file and make sure template exists, otherwise render blank template
   var doc bytes.Buffer 
   tmpl, err := template.ParseFiles( file)
@@ -43,29 +43,31 @@ func renderJson(file string, context CommandEnv) []byte {
   if err != nil { panic(err) }
   return doc.Bytes()
 }
-
+// We render the json because its a template and could contain variables that would need to be
+// rendered first.
+// cmd_hash is the representation of that specific command in numeric form
+// templatefile is the template file name
+// context is a hash of variables that could be used to render everything together
 func getCommandResponse(cmd_hash string, templatefile string, context CommandEnv) string {
-  jsondata := renderJson(templatefile, context)
-  //return jsondata
+  jsondata := renderTemplate(templatefile, context)
   var objmap map[string]CommandResponse
-  // // Get json object
+  // Get json object
   err := json.Unmarshal(jsondata, &objmap)
   if err != nil {
-
+     fmt.Printf(err)
   }
-  fmt.Printf("Looking at %s", cmd_hash)
+  //fmt.Printf("Looking at %s", cmd_hash)
+  // we need to marshal again so we can just get the specific command hash
   cmd_json, de_err := json.Marshal(objmap[cmd_hash])
   if de_err != nil {
-    // return nil if not found
+  //return nil if not found
   }
   return string(cmd_json)
-
 }
 
 func commandHandler(w http.ResponseWriter, r *http.Request) {
   commandname := mux.Vars(r)["command"]
   response_id := mux.Vars(r)["id"]
-  fmt.Printf("%s", r.Body)
   template_dir := "templates"
   template_suffix := "tmpl"
   templatefile := fmt.Sprintf("%s/%s.%s", template_dir,commandname, template_suffix)

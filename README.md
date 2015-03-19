@@ -36,7 +36,9 @@ having to mock objects and rely on fixtures to supply the data.  I want a real r
   The PROMPT_COMMAND will execute the main binary that then creates a shim specifically for the system call.
   We can then changes the PROMPT to show its a mocked response.
 
-
+* Using in testing code
+   Allow the user to set the context, like environment variables, and response namespaces which would be passed in the body
+   or head to allow for different types of responses for a single command.
 
 ### Similar tools
 

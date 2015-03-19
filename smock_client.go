@@ -9,9 +9,17 @@ import (
 	"os"
 	"crypto/sha1"
   	"github.com/codegangsta/cli"
+	"encoding/json"
+
 )
 
 //=========================================================================================
+type CommandResponse struct {
+	Stdout string `json:"Stdout"`
+	Stderr string `json:"Stderr"`
+	Exitcode int `json:"Exitcode"`
+}
+
 func main() {
 	// two different ways to execute an http.GET
 	//
@@ -28,14 +36,35 @@ func main() {
 	    },
   	},
  	}
+	command_name := os.Args[1]
+	args_hash := generateCommandHash(os.Args[1:])
 	app.Action = func(c *cli.Context) {
-		doGet("http://localhost:3001/commands/echo/1234")
+		endpoint := fmt.Sprintf("http://localhost:3001/commands/%s/%s", command_name, args_hash)
+		doGet(endpoint)
 	}
 	app.Run(os.Args)
 }
-func generateCommandHash(cmd_stdin string) string {
+func generateCommandHash(cmd_stdin []string) string {
   data := []byte(fmt.Sprintf("%x",cmd_stdin))
-  return fmt.Sprintf("%x", sha1.Sum(data))
+  hash := fmt.Sprintf("%x", sha1.Sum(data))
+  fmt.Println(hash)
+  return hash
+}
+
+func renderJson(jsondata []byte) CommandResponse {
+	res := &CommandResponse{}
+	// render json to object
+
+	de_err := json.Unmarshal(jsondata, &res)
+
+	if de_err != nil {
+		//return nil if not found
+		fmt.Println(string(jsondata))
+		//panic(de_err)
+		res.Exitcode = 1
+		res.Stdout = "Invalid Json in Command Response"
+	}
+	return *res
 }
 
 func doGet(url string) {
@@ -45,16 +74,14 @@ func doGet(url string) {
 	} else {
 		defer response.Body.Close()
 		contents, err := ioutil.ReadAll(response.Body)
+		// Check for 404 error, return command not found
 		if err != nil {
+
 			log.Fatal(err)
 		}
-		fmt.Println("The calculated length is:", len(string(contents)), "for the url:", url)
-		fmt.Println("   ", response.StatusCode)
-		hdr := response.Header
-		for key, value := range hdr {
-			fmt.Println("   ", key, ":", value)
-		}
-		fmt.Println(string(contents))
+		cmd := renderJson(contents)
+		fmt.Println(cmd.Stdout)
+		os.Exit(cmd.Exitcode)
 	}
 }
 func doPut(url string) {
@@ -80,4 +107,6 @@ func doPut(url string) {
 		fmt.Println(contents)
 	}
 }
+
+
 
