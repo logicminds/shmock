@@ -10,6 +10,9 @@ import (
 	"crypto/sha1"
   	"github.com/codegangsta/cli"
 	"encoding/json"
+	"bytes"
+	"bufio"
+	"regexp"
 
 )
 
@@ -18,6 +21,7 @@ type CommandResponse struct {
 	Stdout string `json:"Stdout"`
 	Stderr string `json:"Stderr"`
 	Exitcode int `json:"Exitcode"`
+	Delay int `json:"Delay"`
 }
 
 func main() {
@@ -28,26 +32,85 @@ func main() {
 	app.Usage = "smock usage"
 	app.Commands = []cli.Command{
 	  {
-	    Name:      "get",
-	    ShortName: "g",
-	    Usage:     "get a command response",
-	    Action: func(c *cli.Context) {
-	      println("Get a command response: ", c.Args().First())
-	    },
-  	},
- 	}
+		  Name:      "list",
+		  ShortName: "l",
+		  Usage:     "get a list of commands",
+		  Action: func(c *cli.Context) {
+		    println("Get a list of commands: ", c.Args().First())
+		  },
+  	  },
+	  {
+		  Name:      "environment",
+		  ShortName: "e",
+		  Usage:     "use passing in environment",
+		  Action: func(c *cli.Context) {
+			  println("Sets an environment: ", c.Args().First())
+		  },
+	  },
+	  {
+		  Name:      "namespace",
+		  ShortName: "n",
+		  Usage:     "use a command namespace",
+		  Action: func(c *cli.Context) {
+			  println("Sets a namespace when selecting commands: ", c.Args().First())
+		  },
+	  },
+	}
+	// start a interactive shell session
+	if len(os.Args) < 2 {
+		runShell()
+		os.Exit(0)
+	}
 	command_name := os.Args[1]
 	args_hash := generateCommandHash(os.Args[1:])
 	app.Action = func(c *cli.Context) {
 		endpoint := fmt.Sprintf("http://localhost:3001/commands/%s/%s", command_name, args_hash)
-		doGet(endpoint)
+		cmd := doGet(endpoint)
+		fmt.Println(cmd.Stdout)
+		if cmd.Stderr != "" {
+			fmt.Println(cmd.Stderr)
+		}
+		os.Exit(cmd.Exitcode)
+		//doPost(endpoint, , " ")
 	}
 	app.Run(os.Args)
 }
+func runShell() {
+	r, _ := regexp.Compile("[0-9A-Za-z_-]+")
+	scanner := bufio.NewScanner(os.Stdin)
+	fmt.Print("SmockShell> ")
+	for scanner.Scan() {
+		line := scanner.Text()
+		if line == "exit" {
+			break
+		}
+		// Catch any bad characters instead of sending them to the server
+		if !r.MatchString(line) {
+			fmt.Print("SmockShell> ")
+			continue
+		}
+		// look for set namespace
+		// look for set environment
+		// look for list
+		// look for help
+		args := strings.Split(line, " ")
+		command_name := args[0]
+		args_hash := generateCommandHash(args)
+		endpoint := fmt.Sprintf("http://localhost:3001/commands/%s/%s", command_name, args_hash)
+		cmd := doGet(endpoint)
+		fmt.Println(cmd.Stdout)
+		if cmd.Stderr != "" {
+			fmt.Println(cmd.Stderr)
+		}
+		fmt.Println(cmd.Exitcode)
+		fmt.Print("SmockShell> ")
+	}
+}
+
 func generateCommandHash(cmd_stdin []string) string {
   data := []byte(fmt.Sprintf("%x",cmd_stdin))
   hash := fmt.Sprintf("%x", sha1.Sum(data))
-  fmt.Println(hash)
+  //fmt.Println(hash)
   return hash
 }
 
@@ -67,10 +130,11 @@ func renderJson(jsondata []byte) CommandResponse {
 	return *res
 }
 
-func doGet(url string) {
+func doGet(url string) CommandResponse {
 	response, err := http.Get(url)
 	if err != nil {
 		log.Fatal(err)
+		os.Exit(1)
 	} else {
 		defer response.Body.Close()
 		contents, err := ioutil.ReadAll(response.Body)
@@ -80,9 +144,30 @@ func doGet(url string) {
 			log.Fatal(err)
 		}
 		cmd := renderJson(contents)
-		fmt.Println(cmd.Stdout)
-		os.Exit(cmd.Exitcode)
+		return cmd
 	}
+	return CommandResponse{}
+}
+func doPost(url string, json_body []byte, namespace string) {
+	client := &http.Client{}
+	req, err := http.NewRequest("POST", url, bytes.NewBuffer(json_body))
+
+	if namespace != "" {
+		req.Header.Set("X-Command-Namespace", namespace)
+	}
+	req.Header.Set("Content-Type", "application/json")
+
+	resp, err := client.Do(req)
+	if err != nil {
+		panic(err)
+	}
+	defer resp.Body.Close()
+
+	fmt.Println("response Status:", resp.Status)
+	fmt.Println("response Headers:", resp.Header)
+	body, _ := ioutil.ReadAll(resp.Body)
+	fmt.Println("response Body:", string(body))
+
 }
 func doPut(url string) {
 	client := &http.Client{}

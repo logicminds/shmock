@@ -40,6 +40,8 @@ having to mock objects and rely on fixtures to supply the data.  I want a real r
    Allow the user to set the context, like environment variables, and response namespaces which would be passed in the body
    or head to allow for different types of responses for a single command.
 
+* Pass in the Environment using os.Environ in the headers
+* Pass in the namespace of the command in the header
 ### Similar tools
 
 * https://bitheap.org/cram/

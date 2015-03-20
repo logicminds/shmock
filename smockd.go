@@ -12,7 +12,7 @@ import (
   "encoding/json"
   "crypto/sha1"
   "bytes"
-  //"os"
+  "os"
 
 )
 type CommandEnv struct {
@@ -22,6 +22,7 @@ type CommandResponse struct {
   Stdout string
   Stderr string
   Exitcode int
+  Delay int
 }
 
 // Generate a unique hash for the given environment
@@ -36,11 +37,15 @@ func generateCommandHash(cmd_stdin string) string {
 
 func renderTemplate(file string, context CommandEnv) []byte {
   // Check for template file and make sure template exists, otherwise render blank template
-  var doc bytes.Buffer 
-  tmpl, err := template.ParseFiles( file)
-  if err != nil { panic(err) }
+  var doc bytes.Buffer
+  tmpl, err := template.ParseFiles(file)
+  if err != nil {
+    panic(err)
+  }
   err = tmpl.Execute(&doc, context)
-  if err != nil { panic(err) }
+  if err != nil {
+    panic(err)
+  }
   return doc.Bytes()
 }
 // We render the json because its a template and could contain variables that would need to be
@@ -54,26 +59,43 @@ func getCommandResponse(cmd_hash string, templatefile string, context CommandEnv
   // Get json object
   err := json.Unmarshal(jsondata, &objmap)
   if err != nil {
-     fmt.Printf(err)
+    // Invalid JSON
+     fmt.Println(err)
   }
   //fmt.Printf("Looking at %s", cmd_hash)
   // we need to marshal again so we can just get the specific command hash
-  cmd_json, de_err := json.Marshal(objmap[cmd_hash])
-  if de_err != nil {
-  //return nil if not found
+  value, ok := objmap[cmd_hash]
+  if !ok {
+    return renderNotFoundError()
+  } else {
+    cmd_json, de_err := json.Marshal(value)
+    if de_err != nil {
+      return renderNotFoundError()
+    }
+    return string(cmd_json)
   }
-  return string(cmd_json)
 }
-
+func renderNotFoundError() string {
+  template_dir := "templates"
+  template_suffix := "tmpl"
+  template_file := fmt.Sprintf("%s/%s.%s", template_dir,"internal_responses", template_suffix)
+  response_id := "invalid_command"
+  cmd_env := CommandEnv{"/home/user1"}
+  return getCommandResponse(response_id, template_file, cmd_env)
+}
 func commandHandler(w http.ResponseWriter, r *http.Request) {
-  commandname := mux.Vars(r)["command"]
+  command_name := mux.Vars(r)["command"]
   response_id := mux.Vars(r)["id"]
   template_dir := "templates"
   template_suffix := "tmpl"
-  templatefile := fmt.Sprintf("%s/%s.%s", template_dir,commandname, template_suffix)
+  template_file := fmt.Sprintf("%s/%s.%s", template_dir,command_name, template_suffix)
   cmd_env := CommandEnv{"/home/user1"}
-  // throw 404 if not found
-  fmt.Fprintf(w, getCommandResponse(response_id, templatefile, cmd_env))
+  if _, err := os.Stat(template_file); os.IsNotExist(err) {
+    // once we start to pass data, we need to add the previous command called so its rendered here
+    fmt.Fprintf(w, renderNotFoundError())
+  } else {
+    fmt.Fprintf(w, getCommandResponse(response_id, template_file, cmd_env))
+  }
 }
 // func listCommandsHandler(w http.ResponseWriter, r *http.Request) {
 //   commandname := mux.Vars(r)["command"]
