@@ -13,10 +13,7 @@ having to mock objects and rely on fixtures to supply the data.  I want a real r
 
 * mock any binary on any system for through system testing
 * Written in go language so install is easy
-* Should stub the PATH env variable so that when any binary is called
-  it would have to check with smock to see if its being mocked.
 * Should have a pluggable system so writting "fixtures" or common responses can be shared among others easily and be downloadable.
-* Shim the path like RVM or rbenv
 * Should also have a "Gemfile" that specifies which binaries are to be mocked and which set of fixtures they should use.
 * Should be able to switch fixtures easily (maybe use ENV Variable)
 * Should have a web interface to show which things are being smocked.
@@ -43,6 +40,11 @@ having to mock objects and rely on fixtures to supply the data.  I want a real r
 * Pass in the Environment using os.Environ in the headers
 * Pass in the namespace of the command in the header
 ### Similar tools
+
+
+### Issues
+- when capturing from a Ruby project not all commands are captured because the output of the captured command is not
+   exposed to secondary commands.
 
 * https://bitheap.org/cram/
 * http://pbrisbin.com/posts/mocking_bash/

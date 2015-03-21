@@ -13,6 +13,9 @@ import (
 	"bytes"
 	"bufio"
 	"regexp"
+	"os/exec"
+	"syscall"
+	"path"
 
 )
 
@@ -22,58 +25,222 @@ type CommandResponse struct {
 	Stderr string `json:"Stderr"`
 	Exitcode int `json:"Exitcode"`
 	Delay int `json:"Delay"`
+	Stdin string
 }
+func check(e error) {
+	if e != nil {
+		panic(e)
+	}
+}
+var namespace string
 
 func main() {
 	// two different ways to execute an http.GET
 	//
 	app := cli.NewApp()
+	app.Version = "0.0.1"
+	app.Author = "Corey Osman"
+	app.Email = "corey@logicminds.biz"
 	app.Name = "smock"
 	app.Usage = "smock usage"
+	app.Flags = []cli.Flag {
+
+		cli.StringFlag{
+			Name:      "namespace",
+			Usage:     "Pass in a namespace to be used when running or capturing commands.\n\tThis helps separate sets of commands that might have different use cases\n\tie. biz/logicminds/rubyipmi",
+			EnvVar:    "SMOCK_COMMAND_NAMESPACE",
+		},
+
+	}
 	app.Commands = []cli.Command{
-	  {
-		  Name:      "list",
-		  ShortName: "l",
-		  Usage:     "get a list of commands",
-		  Action: func(c *cli.Context) {
-		    println("Get a list of commands: ", c.Args().First())
-		  },
-  	  },
-	  {
-		  Name:      "environment",
-		  ShortName: "e",
-		  Usage:     "use passing in environment",
-		  Action: func(c *cli.Context) {
-			  println("Sets an environment: ", c.Args().First())
-		  },
-	  },
-	  {
-		  Name:      "namespace",
-		  ShortName: "n",
-		  Usage:     "use a command namespace",
-		  Action: func(c *cli.Context) {
-			  println("Sets a namespace when selecting commands: ", c.Args().First())
-		  },
-	  },
+		{
+			Name:      "list",
+			ShortName: "l",
+			Usage:     "get a list of commands",
+			Action: func(c *cli.Context) {
+				println("Get a list of commands: ", c.Args().First())
+				os.Exit(0)
+			},
+		},
+		{
+			Name:      "commandhash",
+			Usage:     "Returns the hash of the args",
+			Action: func(c *cli.Context) {
+				println(generateCommandHash(c.Args()))
+			},
+		},
+		{
+			Name:      "capture",
+			Usage:     "run real commands and capture their output",
+			Flags: []cli.Flag{
+				cli.StringFlag{
+					Name:      "template_path",
+					Usage:     "Where to store templates during command captures",
+					Value:     "smock-templates",
+					EnvVar:    "SMOCK_TEMPLATE_PATH",
+				},
+				cli.StringFlag{
+					Name:      "namespace",
+					Usage:     "Pass in a namespace to be used when running or capturing commands.\n\tThis helps separate sets of commands that might have different use cases\n\tie. biz/logicminds/rubyipmi",
+					EnvVar:    "SMOCK_COMMAND_NAMESPACE",
+				},
+
+			},
+			Action: func(c *cli.Context) {
+				// there can be two ways of entering commands
+				// ie. echo hello  or
+				// ie. 'echo hello'
+				var full_cmd []string
+				if len(c.Args()) > 1 {
+					full_cmd = c.Args()[:]
+				} else if len(c.Args()) == 1 {
+					full_cmd = strings.Split(c.Args()[0], " ")
+				} else {
+					os.Exit(0)
+				}
+				command_name := full_cmd[0]
+				command_args := full_cmd[1:]
+				resp := captureCommand(command_name, command_args)
+				cmd_map := generateResponseMap(resp)
+				// create the directory structure
+				template_path := c.String("template_path")
+				namespace = c.String("namespace")
+				mergeToCaptureFile(fmt.Sprintf("%s.tmpl", path.Join(template_path, namespace,command_name)), cmd_map)
+				if resp.Exitcode == 0 {
+					println(resp.Stdout)
+				} else {
+					println(resp.Stderr)
+				}
+				os.Exit(resp.Exitcode)
+			},
+		},
 	}
-	// start a interactive shell session
-	if len(os.Args) < 2 {
-		runShell()
-		os.Exit(0)
-	}
-	command_name := os.Args[1]
-	args_hash := generateCommandHash(os.Args[1:])
 	app.Action = func(c *cli.Context) {
-		endpoint := fmt.Sprintf("http://localhost:3001/commands/%s/%s", command_name, args_hash)
-		cmd := doGet(endpoint)
-		fmt.Println(cmd.Stdout)
-		if cmd.Stderr != "" {
-			fmt.Println(cmd.Stderr)
+		// start a interactive shell session
+		namespace = c.String("namespace")
+		if len(os.Args) < 2 {
+			runShell()
+			os.Exit(0)
 		}
-		os.Exit(cmd.Exitcode)
-		//doPost(endpoint, , " ")
+		i := c.NumFlags() + 1
+		command_name := strings.Split(os.Args[i], " ")[0]
+		command_args := os.Args[i:]
+		args_hash := generateCommandHash(command_args)
+		getCommand(command_name, args_hash)
+
 	}
+	file, err := os.OpenFile("file.txt", os.O_CREATE|os.O_WRONLY|os.O_APPEND, 0666)
+	if err != nil {
+		log.Fatalln("Failed to open log file", "file.txt", ":", err)
+	}
+	log.SetOutput(file)
 	app.Run(os.Args)
+}
+// generates a sha1 hash based on cmd_stdin
+// generally this should be the command and args
+func generateCommandHash(cmd_stdin []string) string {
+	full_command := strings.Join(cmd_stdin, " ")
+	data := []byte(fmt.Sprintf("%U",full_command))
+	hash := fmt.Sprintf("%x", sha1.Sum(data))
+	return hash
+}
+// Creates the given path, if path has an extension it gets the base name of the file and generates that path
+func createTemplatePath(filepath string) {
+	filepath = path.Dir(filepath)
+	err := os.MkdirAll(filepath, 0744)
+	check(err)
+}
+// write the map output to a file
+// if a file already exists with a map inside, read the contents first and then merge the contents and overwrite the file
+func mergeToCaptureFile(filepath string, m map[string]CommandResponse) {
+	if _, err := os.Stat(filepath); os.IsNotExist(err) {
+		// file does not exist, no need to merge
+		createTemplatePath(filepath)
+	} else {
+		// file already exists we need to read in the data and then merge the two together
+		prev := generateResponseMapFromFile(filepath)
+		for k,v := range prev {
+			m[k] = v
+		}
+	}
+	b, err := json.Marshal(m)
+	if err != nil {
+		log.Fatalf("error encoding command %v", err)
+	}
+	err = ioutil.WriteFile(filepath, b, 0644)
+	check(err)
+	log.Printf("Wrote to file: %s", filepath)
+}
+func getCommand(command_name string, args_hash string) {
+	// path is normally reserved for File related things, but since its unix this will also work on url schemes
+	endpoint := generateEndpoint(command_name, args_hash)
+	cmd := doGet(endpoint)
+	fmt.Println(cmd.Stdout)
+	if cmd.Stderr != "" {
+		fmt.Println(cmd.Stderr)
+	}
+	os.Exit(cmd.Exitcode)
+}
+// run the command on the os and capture the output, return a CommandResponse Object
+func captureCommand(command string, args []string) CommandResponse {
+	log.Printf("Command: %s %s", command, args)
+	var exitcode = 0
+	cmd := exec.Command(command, args...)
+	var stdout bytes.Buffer
+	var stderr bytes.Buffer
+	cmd.Stdout = &stdout
+	cmd.Stderr = &stderr
+
+	if err := cmd.Start(); err != nil {
+		log.Fatalf("cmd.Start: %v")
+	}
+
+	if err := cmd.Wait(); err != nil {
+		if exiterr, ok := err.(*exec.ExitError); ok {
+			// The program has exited with an exit code != 0
+			// There is no plattform independent way to retrieve
+			// the exit code, but the following will work on Unix
+			if status, ok := exiterr.Sys().(syscall.WaitStatus); ok {
+				// for some odd reason this is output exit status 1
+				exitcode = status.ExitStatus()
+			}
+		} else {
+			log.Fatalf("cmd.Wait: %v", err)
+		}
+	}
+
+	//usertime := cmd.ProcessState.UserTime()
+	//fmt.Printf("Milli [%v]", usertime.Seconds())
+
+	log.Printf("Exit Status: %d", exitcode )
+	// store the original command call in stdin
+	stdin := append([]string{command}, args...)
+	command_response := CommandResponse{Stdout: stdout.String(),
+		Stderr: stderr.String(),
+		Exitcode: exitcode,
+		Delay:0,
+		Stdin: strings.Join(stdin, " "),
+	}
+	return command_response
+}
+func generateResponseMap(command CommandResponse) map[string]CommandResponse {
+	var m = make(map[string]CommandResponse)
+	hash := generateCommandHash(strings.Split(command.Stdin, " "))
+	m[hash] = command
+	return m
+}
+func generateResponseMapFromFile(filepath string) map[string]CommandResponse {
+	var m = map[string]CommandResponse{}
+	dat, err := ioutil.ReadFile(filepath)
+	check(err)
+	if err := json.Unmarshal(dat,&m) ; err != nil {
+		log.Fatalf("Cannot read file %s", filepath)
+	}
+	return m
+}
+// generates a valid http endpoint
+func generateEndpoint(command_name string, args_hash string) string {
+	return fmt.Sprintf("http://localhost:3001/%s", path.Join("commands",command_name, args_hash))
 }
 func runShell() {
 	r, _ := regexp.Compile("[0-9A-Za-z_-]+")
@@ -96,7 +263,7 @@ func runShell() {
 		args := strings.Split(line, " ")
 		command_name := args[0]
 		args_hash := generateCommandHash(args)
-		endpoint := fmt.Sprintf("http://localhost:3001/commands/%s/%s", command_name, args_hash)
+		endpoint := generateEndpoint(command_name, args_hash)
 		cmd := doGet(endpoint)
 		fmt.Println(cmd.Stdout)
 		if cmd.Stderr != "" {
@@ -105,13 +272,6 @@ func runShell() {
 		fmt.Println(cmd.Exitcode)
 		fmt.Print("SmockShell> ")
 	}
-}
-
-func generateCommandHash(cmd_stdin []string) string {
-  data := []byte(fmt.Sprintf("%x",cmd_stdin))
-  hash := fmt.Sprintf("%x", sha1.Sum(data))
-  //fmt.Println(hash)
-  return hash
 }
 
 func renderJson(jsondata []byte) CommandResponse {
@@ -131,7 +291,11 @@ func renderJson(jsondata []byte) CommandResponse {
 }
 
 func doGet(url string) CommandResponse {
-	response, err := http.Get(url)
+	client := &http.Client{}
+	req, err := http.NewRequest("GET", url, nil)
+	check(err)
+	req.Header.Add("X-Smock-Namespace", namespace)
+	response, err := client.Do(req)
 	if err != nil {
 		log.Fatal(err)
 		os.Exit(1)
@@ -140,7 +304,6 @@ func doGet(url string) CommandResponse {
 		contents, err := ioutil.ReadAll(response.Body)
 		// Check for 404 error, return command not found
 		if err != nil {
-
 			log.Fatal(err)
 		}
 		cmd := renderJson(contents)

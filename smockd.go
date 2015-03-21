@@ -13,6 +13,9 @@ import (
   "crypto/sha1"
   "bytes"
   "os"
+  "log"
+  "strings"
+  "path"
 
 )
 type CommandEnv struct {
@@ -22,6 +25,7 @@ type CommandResponse struct {
   Stdout string
   Stderr string
   Exitcode int
+  Stdin string
   Delay int
 }
 
@@ -30,9 +34,13 @@ func mainHandler(w http.ResponseWriter, r *http.Request) {
     fmt.Fprintf(w, "Welcome to the home page!")
 }
 
-func generateCommandHash(cmd_stdin string) string {
-  data := []byte(fmt.Sprintf("%x",cmd_stdin))
-  return fmt.Sprintf("%x", sha1.Sum(data))
+// generates a sha1 hash based on cmd_stdin
+// generally this should be the command and args
+func generateCommandHash(cmd_stdin []string) string {
+  full_command := strings.Join(cmd_stdin, " ")
+  data := []byte(fmt.Sprintf("%U",full_command))
+  hash := fmt.Sprintf("%x", sha1.Sum(data))
+  return hash
 }
 
 func renderTemplate(file string, context CommandEnv) []byte {
@@ -84,14 +92,17 @@ func renderNotFoundError() string {
   return getCommandResponse(response_id, template_file, cmd_env)
 }
 func commandHandler(w http.ResponseWriter, r *http.Request) {
+  namespace := r.Header.Get("X-Smock-Namespace")
   command_name := mux.Vars(r)["command"]
   response_id := mux.Vars(r)["id"]
   template_dir := "templates"
   template_suffix := "tmpl"
-  template_file := fmt.Sprintf("%s/%s.%s", template_dir,command_name, template_suffix)
+  template_file := fmt.Sprintf("%s.%s", path.Join(template_dir,namespace,command_name), template_suffix)
   cmd_env := CommandEnv{"/home/user1"}
+  log.Printf("Looking up template: %s", template_file)
   if _, err := os.Stat(template_file); os.IsNotExist(err) {
     // once we start to pass data, we need to add the previous command called so its rendered here
+    log.Printf("%s file not found", template_file)
     fmt.Fprintf(w, renderNotFoundError())
   } else {
     fmt.Fprintf(w, getCommandResponse(response_id, template_file, cmd_env))
@@ -149,8 +160,8 @@ func main() {
   router := mux.NewRouter()
 
   router.HandleFunc("/", mainHandler) 
-
-  router.HandleFunc("/commands/{command}/{id:.+}", commandHandler)
+  //http://localhost:3001/commands/usr/bin/which/b7bdcd4486792996bf130fe8675f95daf905d13f
+  router.HandleFunc("/commands/{command:.*}/{id:[0-9a-z]+}", commandHandler)
   //router.HandleFunc("/commands/{command}", showCommandResponsesHandler)
   //router.HandleFunc("/commands", listCommandsHandler)
  
