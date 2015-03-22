@@ -12,7 +12,6 @@ having to mock objects and rely on fixtures to supply the data.  I want a real r
 ### Goals
 
 * mock any binary on any system for through system testing
-* Written in go language so install is easy
 * Should have a pluggable system so writting "fixtures" or common responses can be shared among others easily and be downloadable.
 * Should also have a "Gemfile" that specifies which binaries are to be mocked and which set of fixtures they should use.
 * Should be able to switch fixtures easily (maybe use ENV Variable)
