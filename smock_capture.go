@@ -133,7 +133,7 @@ func printToConsole(command CommandResponse) {
 	if command.Exitcode == 0 {
 		fmt.Print(command.Stdout)
 	} else {
-		fmt.Print(command.Stderr)
+		fmt.Println(command.Stderr)
 	}
 	os.Exit(command.Exitcode)
 }

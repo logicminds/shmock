@@ -58,8 +58,19 @@ func main() {
 			ShortName: "l",
 			Usage:     "get a list of commands",
 			Action: func(c *cli.Context) {
-				println("Get a list of commands: ", c.Args().First())
+				namespace = c.String("namespace")
+				commands := getCommandList()
+				for _, file := range commands {
+					fmt.Println(file)
+				}
 				os.Exit(0)
+			},
+			Flags: []cli.Flag{
+				cli.StringFlag{
+					Name:      "namespace",
+					Usage:     "Pass in a namespace to be used when running or capturing commands.\n\tThis helps separate sets of commands that might have different use cases\n\tie. biz/logicminds/rubyipmi",
+					EnvVar:    "SMOCK_COMMAND_NAMESPACE",
+				},
 			},
 		},
 		{
@@ -139,7 +150,7 @@ func main() {
 		getCommand(command_name, args_hash)
 
 	}
-	file, err := os.OpenFile("file.txt", os.O_CREATE|os.O_WRONLY|os.O_APPEND, 0666)
+	file, err := os.OpenFile("/tmp/smock.log", os.O_CREATE|os.O_WRONLY|os.O_APPEND, 0666)
 	if err != nil {
 		log.Fatalln("Failed to open log file", "file.txt", ":", err)
 	}
@@ -165,9 +176,9 @@ func printToConsole(command CommandResponse) {
 	if command.Exitcode == 0 {
 		fmt.Print(command.Stdout)
 	} else {
-		fmt.Print(command.Stderr)
+		fmt.Println(command.Stderr)
 	}
-	os.Exit(command.Exitcode)
+   	os.Exit(command.Exitcode)
 }
 // write the map output to a file
 // if a file already exists with a map inside, read the contents first and then merge the contents and overwrite the file
@@ -195,6 +206,17 @@ func getCommand(command_name string, args_hash string) {
 	endpoint := generateEndpoint(command_name, args_hash)
 	cmd := doGet(endpoint)
 	printToConsole(cmd)
+}
+func getCommandList() []string {
+	// path is normally reserved for File related things, but since its unix this will also work on url schemes
+	endpoint := generateEndpoint("","")
+	jsondata := Get(endpoint)
+	commands := []string{}
+	// render json to object
+
+	de_err := json.Unmarshal(jsondata, &commands)
+	check(de_err)
+	return commands
 }
 // run the command on the os and capture the output, return a CommandResponse Object
 func captureCommand(args []string) CommandResponse {
@@ -307,8 +329,7 @@ func renderJson(jsondata []byte) CommandResponse {
 	}
 	return *res
 }
-
-func doGet(url string) CommandResponse {
+func Get(url string) []byte {
 	client := &http.Client{}
 	req, err := http.NewRequest("GET", url, nil)
 	check(err)
@@ -324,10 +345,14 @@ func doGet(url string) CommandResponse {
 		if err != nil {
 			log.Fatal(err)
 		}
-		cmd := renderJson(contents)
-		return cmd
+		return contents
 	}
-	return CommandResponse{}
+	return nil
+}
+func doGet(url string) CommandResponse {
+	contents := Get(url)
+	cmd := renderJson(contents)
+	return cmd
 }
 func doPost(url string, json_body []byte, namespace string) {
 	client := &http.Client{}

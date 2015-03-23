@@ -8,6 +8,7 @@ import (
   "github.com/stretchr/graceful"
   "github.com/unrolled/render"
   "text/template"
+  "path/filepath"
   "time"
   "encoding/json"
   "crypto/sha1"
@@ -18,6 +19,9 @@ import (
   "path"
 
 )
+var template_dir string = "templates"
+var template_suffix string = ".tmpl"
+
 type CommandEnv struct {
   Home   string
 }
@@ -84,9 +88,7 @@ func getCommandResponse(cmd_hash string, templatefile string, context CommandEnv
   }
 }
 func renderNotFoundError() string {
-  template_dir := "templates"
-  template_suffix := "tmpl"
-  template_file := fmt.Sprintf("%s/%s.%s", template_dir,"internal_responses", template_suffix)
+  template_file := fmt.Sprintf("%s/%s.%s", template_dir,"internal_responses", "json")
   response_id := "invalid_command"
   cmd_env := CommandEnv{"/home/user1"}
   return getCommandResponse(response_id, template_file, cmd_env)
@@ -95,9 +97,7 @@ func commandHandler(w http.ResponseWriter, r *http.Request) {
   namespace := r.Header.Get("X-Smock-Namespace")
   command_name := mux.Vars(r)["command"]
   response_id := mux.Vars(r)["id"]
-  template_dir := "templates"
-  template_suffix := "tmpl"
-  template_file := fmt.Sprintf("%s.%s", path.Join(template_dir,namespace,command_name), template_suffix)
+  template_file := fmt.Sprintf("%s%s", path.Join(template_dir,namespace,command_name), template_suffix)
   cmd_env := CommandEnv{"/home/user1"}
   log.Printf("Looking up template: %s", template_file)
   if _, err := os.Stat(template_file); os.IsNotExist(err) {
@@ -108,20 +108,27 @@ func commandHandler(w http.ResponseWriter, r *http.Request) {
     fmt.Fprintf(w, getCommandResponse(response_id, template_file, cmd_env))
   }
 }
-// func listCommandsHandler(w http.ResponseWriter, r *http.Request) {
-//   commandname := mux.Vars(r)["command"]
-//   //response_id := mux.Vars(r)["id"]
-//   fmt.Printf("%s", r.Body)
-//   template_dir := "templates"
-//   template_suffix := "tmpl"
-//   templatefile := fmt.Sprintf("%s/%s.%s", template_dir,commandname, template_suffix)
-//   sweaters := Inventory{"wool", 17}
-//   // Check for template file and make sure template exists, otherwise render blank template
-//   tmpl, err := template.ParseFiles( templatefile)
-//   if err != nil { panic(err) }
-//   err = tmpl.Execute(w, sweaters)
-//   if err != nil { panic(err) }
-// }
+func listCommandsHandler(w http.ResponseWriter, r *http.Request) {
+  namespace := r.Header.Get("X-Smock-Namespace")
+  template_path := path.Join(template_dir,namespace)
+  path_size := len(template_path)
+  prefix_size := len(template_suffix)
+  fileList := []string{}
+  _ = filepath.Walk(template_path, func(path string, f os.FileInfo, err error) error {
+      if strings.Contains(path, template_suffix) {
+        // only gets the /usr/local/sbin/echo in templates/biz/logicminds/rubyipmi/usr/local/sbin/echo.tmpl
+        p := path[path_size:(len(path) - prefix_size)]
+        fileList = append(fileList, p)
+      }
+      return nil
+    })
+  cmd_json, de_err := json.Marshal(fileList)
+  if de_err != nil {
+     panic(de_err)
+  }
+  fmt.Fprintf(w, string(cmd_json))
+
+}
 // func showCommandResponseHandler(w http.ResponseWriter, r *http.Request) {
 //   commandname := mux.Vars(r)["command"]
 //   //response_id := mux.Vars(r)["id"]
@@ -162,9 +169,11 @@ func main() {
   router.HandleFunc("/", mainHandler) 
   //http://localhost:3001/commands/usr/bin/which/b7bdcd4486792996bf130fe8675f95daf905d13f
   router.HandleFunc("/commands/{command:.*}/{id:[0-9a-z]+}", commandHandler)
+  // list all the commands available
+  router.HandleFunc("/commands", listCommandsHandler)
+
   //router.HandleFunc("/commands/{command}", showCommandResponsesHandler)
-  //router.HandleFunc("/commands", listCommandsHandler)
- 
+
   n := negroni.Classic()
 
   n.UseHandler(router)
