@@ -1,4 +1,4 @@
-## Smock
+## Shmock
 A system level mocking subsystem.
 
 ## Why
@@ -23,15 +23,15 @@ easily.  There should be a standard way of sharing system command fixtures.
 ## Features
 
 ### List Commands
-The smock client has the ability to list the commands that are currently being "smocked".  Additional if you specify the
+The shmock client has the ability to list the commands that are currently being "shmocked".  Additional if you specify the
 namespace you will get a list of just the commands under that namespace.
 
-### Smock Fixtures (a.k.a Smocks)
-A smock fixture is basically a plain text file encoded in JSON format.  The use of JSON files allows any person to easily
-tweak the output of the command.  Additionally these files can be grouped together and shared among other smock users through
+### System Response Fixtures (a.k.a Shmocks)
+A shmock fixture is basically a plain text file encoded in JSON format.  The use of JSON files allows any person to easily
+tweak the output of the command.  Additionally these files can be grouped together and shared among other shmock users through
 traditional file sharing methods.
 
-Example Smock file
+Example Shmock response file
 
 ```json
 {
@@ -45,10 +45,10 @@ Example Smock file
  }
 ```
 
-Example Smocks files struture
+Example Shmocks files struture
 
 ```shell
-   ├── smocks
+   ├── shmocks
    │   ├── biz
    │   │   └── logicminds
    │   │       └── rubyipmi
@@ -64,25 +64,25 @@ Example Smocks files struture
 
 ```
 
-### Sharable Smock Fixtures
-Smock fixtures are easily sharable since they are just json files that contain the output of a system command.  These files
+### Sharable Shmock Fixtures
+Shmock fixtures are easily sharable since they are just json files that contain the output of a system command.  These files
 can be shared via traditional methods through VCS repos, tar files, zip files.  Each set of fixtures can be namespaced
 to allow for different kinds of responses.
 
 ### Load Command
-The smock client has the ability to load new smocks from a remote/local destination.  This allows the user to pull
-down new smocks manually.
+The shmock client has the ability to load new shmocks from a remote/local destination.  This allows the user to pull
+down new shmocks manually.
 
-### Smockfile
-The Smockfile provides the smock client or smock server with a automated way to sync smocks.  This is analogous to using a Gemfile to pull down Gems.
-Underneath the Smockfile we are just using the load command to pull down remote / local smocks.
+### Shmockfile
+The Shmockfile provides the shmock client or shmock server with a automated way to sync shmocks.  This is analogous to using a Gemfile to pull down Gems.
+Underneath the Shmockfile we are just using the load command to pull down remote / local shmocks.
 
-### Smock Client
-The smock client is a CLI app in Golang that can be run on the command line to get smocked commands or capture existing
-commands that have not been smocked yet.
+### Shmock Client
+The shmock client is a CLI app in Golang that can be run on the command line to get shmocked commands or capture existing
+commands that have not been shmocked yet.
 
-### Smock Capture
-The smock capture CLI app is a subset of the smock client but is designed to capture commands as the default behavior
+### Shmock Capture
+The shmock capture CLI app is a subset of the shmock client but is designed to capture commands as the default behavior
 and can be used inside your test suite.
 
 ### Similar tools
